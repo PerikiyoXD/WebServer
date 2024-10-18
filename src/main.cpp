@@ -13,13 +13,16 @@ using asio::ip::tcp;
 
 class Logger {
 public:
-    Logger(const std::string& filename) : log_file_(filename, std::ios::app) {
+    Logger(const std::string& filename)
+        : log_file_(filename, std::ios::app)
+    {
         if (!log_file_.is_open()) {
             throw std::runtime_error("Failed to open log file");
         }
     }
 
-    void log(const std::string& client_ip, const std::string& request, const std::string& status) {
+    void log(const std::string& client_ip, const std::string& request, const std::string& status)
+    {
         std::lock_guard<std::mutex> guard(log_mutex_);
 
         std::string timestamp = getTimestamp();
@@ -36,7 +39,8 @@ private:
     std::ofstream log_file_;
     std::mutex log_mutex_;
 
-    std::string getTimestamp() {
+    std::string getTimestamp()
+    {
         auto now = std::chrono::system_clock::now();
         std::time_t now_time = std::chrono::system_clock::to_time_t(now);
         std::tm now_tm = *std::localtime(&now_time);
@@ -50,21 +54,26 @@ private:
 
 class WebServer {
 public:
-    WebServer(unsigned short port, Logger& logger) 
-        : acceptor_(io_context_, tcp::endpoint(tcp::v4(), port)), logger_(logger) {
+    WebServer(unsigned short port, Logger& logger)
+        : acceptor_(io_context_, tcp::endpoint(tcp::v4(), port))
+        , logger_(logger)
+    {
         startAccept();
     }
 
-    void addRoute(const std::string& route, std::function<std::string()> handler) {
+    void addRoute(const std::string& route, std::function<std::string()> handler)
+    {
         routes_[route] = handler;
     }
 
-    void run() {
+    void run()
+    {
         io_context_.run();
     }
 
 private:
-    void startAccept() {
+    void startAccept()
+    {
         auto socket = std::make_shared<tcp::socket>(io_context_);
         acceptor_.async_accept(*socket, [this, socket](std::error_code ec) {
             if (!ec) {
@@ -74,7 +83,8 @@ private:
         });
     }
 
-    void handleRequest(std::shared_ptr<tcp::socket> socket) {
+    void handleRequest(std::shared_ptr<tcp::socket> socket)
+    {
         try {
             char buffer[1024];
             std::error_code error;
@@ -105,7 +115,8 @@ private:
         }
     }
 
-    std::string parseRoute(const std::string& request) {
+    std::string parseRoute(const std::string& request)
+    {
         size_t start = request.find("GET ") + 4;
         size_t end = request.find(" ", start);
         return request.substr(start, end - start);
@@ -117,7 +128,8 @@ private:
     Logger& logger_;
 };
 
-int main() {
+int main()
+{
     try {
         Logger logger("access.log");
 
