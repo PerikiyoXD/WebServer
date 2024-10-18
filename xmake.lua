@@ -2,6 +2,8 @@ add_rules("mode.debug", "mode.release")
 
 add_requires("asio")
 
+set_languages("cxxlatest")
+
 target("WebServer")
     set_kind("binary")
     add_files("src/*.cpp")
