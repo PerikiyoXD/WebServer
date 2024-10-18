@@ -1,6 +1,5 @@
 #include <iostream>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <functional>
 #include <asio.hpp>
