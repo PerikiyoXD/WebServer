@@ -5,11 +5,14 @@
 #include <functional>
 #include <asio.hpp>
 #include <fstream>
+#include <sstream>
+#include <filesystem>
 #include <chrono>
 #include <iomanip>
 #include <ctime>
 
 using asio::ip::tcp;
+namespace fs = std::filesystem;
 
 class Logger {
 public:
@@ -64,6 +67,25 @@ public:
     void addRoute(const std::string& route, std::function<std::string()> handler)
     {
         routes_[route] = handler;
+    }
+
+    void addFileProviderRoute(const std::string& route_prefix, const std::string& folder_path)
+    {
+        routes_[route_prefix] = [this, folder_path, route_prefix]() {
+            try {
+                std::string sanitized_path = sanitizePath(route_prefix, folder_path);
+                if (fs::exists(sanitized_path) && fs::is_regular_file(sanitized_path)) {
+                    std::ifstream file(sanitized_path, std::ios::binary);
+                    std::ostringstream ss;
+                    ss << file.rdbuf();
+                    return ss.str();
+                } else {
+                    return "404 File Not Found";
+                }
+            } catch (const std::runtime_error& e) {
+                return "403 Forbidden: " + std::string(e.what());
+            }
+        };
     }
 
     void run()
@@ -122,6 +144,22 @@ private:
         return request.substr(start, end - start);
     }
 
+    std::string sanitizePath(const std::string& route_prefix, const std::string& base_path)
+    {
+        // Ensure the request doesn't include ".." to avoid directory traversal
+        fs::path requested_path = fs::path(route_prefix).filename();
+
+        // Ensure the path is within the public folder by resolving relative path
+        fs::path full_path = fs::canonical(base_path / requested_path);
+
+        // Check if the resolved path starts with the base folder (i.e., within /public)
+        if (full_path.string().find(fs::canonical(base_path).string()) == 0) {
+            return full_path.string();
+        } else {
+            throw std::runtime_error("Invalid file request - potential directory traversal attempt.");
+        }
+    }
+
     asio::io_context io_context_;
     tcp::acceptor acceptor_;
     std::unordered_map<std::string, std::function<std::string()>> routes_;
@@ -135,16 +173,16 @@ int main()
 
         WebServer server(8080, logger);
 
-        // Define routes
+        // Define simple routes
         server.addRoute("/", []() {
             return "Welcome to the homepage!";
         });
         server.addRoute("/about", []() {
             return "This is the about page.";
         });
-        server.addRoute("/hello", []() {
-            return "Hello, World!";
-        });
+
+        // Define file provider route for /public
+        server.addFileProviderRoute("/public", "./public");
 
         server.run();
     } catch (std::exception& e) {
