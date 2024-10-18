@@ -5,6 +5,9 @@
 #include <functional>
 #include <asio.hpp>
 #include <fstream>
+#include <chrono>
+#include <iomanip>
+#include <ctime>
 
 using asio::ip::tcp;
 
@@ -16,17 +19,33 @@ public:
         }
     }
 
-    void log(const std::string& message) {
+    void log(const std::string& client_ip, const std::string& request, const std::string& status) {
         std::lock_guard<std::mutex> guard(log_mutex_);
+
+        std::string timestamp = getTimestamp();
+        std::string log_entry = client_ip + " - - [" + timestamp + "] \"" + request + "\" " + status;
+
         // Log to console
-        std::cout << message << std::endl;
+        std::cout << log_entry << std::endl;
+
         // Log to file
-        log_file_ << message << std::endl;
+        log_file_ << log_entry << std::endl;
     }
 
 private:
     std::ofstream log_file_;
     std::mutex log_mutex_;
+
+    std::string getTimestamp() {
+        auto now = std::chrono::system_clock::now();
+        std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+        std::tm now_tm = *std::localtime(&now_time);
+
+        std::ostringstream timestamp;
+        timestamp << std::put_time(&now_tm, "%d/%b/%Y:%H:%M:%S %z");
+
+        return timestamp.str();
+    }
 };
 
 class WebServer {
@@ -63,23 +82,26 @@ private:
 
             if (!error) {
                 std::string request(buffer, length);
-                logger_.log("Received request: " + request);
-
+                std::string client_ip = socket->remote_endpoint().address().to_string();
                 std::string route = parseRoute(request);
-                std::string response;
+                std::string status;
 
+                std::string response;
                 if (routes_.find(route) != routes_.end()) {
                     response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n" + routes_[route]();
-                    logger_.log("Route found: " + route);
+                    status = "200 OK";
                 } else {
                     response = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\nRoute Not Found";
-                    logger_.log("Route not found: " + route);
+                    status = "404 Not Found";
                 }
 
                 asio::write(*socket, asio::buffer(response));
+
+                // Log the request with nginx-style format
+                logger_.log(client_ip, "GET " + route, status);
             }
         } catch (std::exception& e) {
-            logger_.log("Exception: " + std::string(e.what()));
+            logger_.log("unknown", "error", "500 Internal Server Error");
         }
     }
 
@@ -97,7 +119,7 @@ private:
 
 int main() {
     try {
-        Logger logger("server.log");
+        Logger logger("access.log");
 
         WebServer server(8080, logger);
 
